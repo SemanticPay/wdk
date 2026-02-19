@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-'use strict'
+"use strict";
 
-import { IWalletAccount, NotImplementedError } from '@tetherto/wdk-wallet'
+import { IWalletAccount, NotImplementedError } from "@tetherto/wdk-wallet";
 
 /** @typedef {import('@tetherto/wdk-wallet/protocols').ISwapProtocol} ISwapProtocol */
 
@@ -38,8 +38,8 @@ export class IWalletAccountWithProtocols extends IWalletAccount {
    * @param {ConstructorParameters<P>[1]} config - The protocol configuration.
    * @returns {IWalletAccountWithProtocols} The account.
    */
-  registerProtocol (label, Protocol, config) {
-    throw new NotImplementedError('registerProtocol(label, Protocol, config)')
+  registerProtocol(label, Protocol, config) {
+    throw new NotImplementedError("registerProtocol(label, Protocol, config)");
   }
 
   /**
@@ -49,8 +49,8 @@ export class IWalletAccountWithProtocols extends IWalletAccount {
    * @returns {ISwapProtocol} The swap protocol.
    * @throws {Error} If no swap protocol has been registered on this account with the given label.
    */
-  getSwapProtocol (label) {
-    throw new NotImplementedError('getSwapProtocol(label)')
+  getSwapProtocol(label) {
+    throw new NotImplementedError("getSwapProtocol(label)");
   }
 
   /**
@@ -60,8 +60,8 @@ export class IWalletAccountWithProtocols extends IWalletAccount {
    * @returns {IBridgeProtocol} The bridge protocol.
    * @throws {Error} If no bridge protocol has been registered on this account with the given label.
    */
-  getBridgeProtocol (label) {
-    throw new NotImplementedError('getBridgeProtocol(label)')
+  getBridgeProtocol(label) {
+    throw new NotImplementedError("getBridgeProtocol(label)");
   }
 
   /**
@@ -71,8 +71,8 @@ export class IWalletAccountWithProtocols extends IWalletAccount {
    * @returns {ILendingProtocol} The lending protocol.
    * @throws {Error} If no lending protocol has been registered on this account with the given label.
    */
-  getLendingProtocol (label) {
-    throw new NotImplementedError('getLendingProtocol(label)')
+  getLendingProtocol(label) {
+    throw new NotImplementedError("getLendingProtocol(label)");
   }
 
   /**
@@ -82,7 +82,7 @@ export class IWalletAccountWithProtocols extends IWalletAccount {
    * @returns {IFiatProtocol} The fiat protocol.
    * @throws {Error} If no fiat protocol has been registered on this account with the given label.
    */
-  getFiatProtocol (label) {
-    throw new NotImplementedError('getFiatProtocol(label)')
+  getFiatProtocol(label) {
+    throw new NotImplementedError("getFiatProtocol(label)");
   }
 }

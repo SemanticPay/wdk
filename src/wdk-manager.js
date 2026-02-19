@@ -12,11 +12,16 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-'use strict'
+"use strict";
 
-import WalletManager from '@tetherto/wdk-wallet'
+import WalletManager from "@tetherto/wdk-wallet";
 
-import { SwapProtocol, BridgeProtocol, LendingProtocol, FiatProtocol } from '@tetherto/wdk-wallet/protocols'
+import {
+  SwapProtocol,
+  BridgeProtocol,
+  LendingProtocol,
+  FiatProtocol,
+} from "@tetherto/wdk-wallet/protocols";
 
 /** @typedef {import('@tetherto/wdk-wallet').IWalletAccount} IWalletAccount */
 
@@ -33,22 +38,22 @@ export default class WDK {
    * @param {string | Uint8Array} seed - The wallet's BIP-39 seed phrase.
    * @throws {Error} If the seed is not valid.
    */
-  constructor (seed) {
+  constructor(seed) {
     if (!WDK.isValidSeed(seed)) {
-      throw new Error('Invalid seed.')
+      throw new Error("Invalid seed.");
     }
 
     /** @private */
-    this._seed = seed
+    this._seed = seed;
 
     /** @private */
-    this._wallets = new Map()
+    this._wallets = new Map();
 
     /** @private */
-    this._protocols = { swap: { }, bridge: { }, lending: { }, fiat: { } }
+    this._protocols = { swap: {}, bridge: {}, lending: {}, fiat: {} };
 
     /** @private */
-    this._middlewares = { }
+    this._middlewares = {};
   }
 
   /**
@@ -56,8 +61,8 @@ export default class WDK {
    *
    * @returns {string} The seed phrase.
    */
-  static getRandomSeedPhrase () {
-    return WalletManager.getRandomSeedPhrase()
+  static getRandomSeedPhrase() {
+    return WalletManager.getRandomSeedPhrase();
   }
 
   /**
@@ -66,12 +71,12 @@ export default class WDK {
    * @param {string | Uint8Array} seed - The seed.
    * @returns {boolean} True if the seed is valid.
    */
-  static isValidSeed (seed) {
+  static isValidSeed(seed) {
     if (seed instanceof Uint8Array) {
-      return seed.length >= 16 && seed.length <= 64
+      return seed.length >= 16 && seed.length <= 64;
     }
 
-    return WalletManager.isValidSeedPhrase(seed)
+    return WalletManager.isValidSeedPhrase(seed);
   }
 
   /**
@@ -83,12 +88,12 @@ export default class WDK {
    * @param {ConstructorParameters<W>[1]} config - The configuration object.
    * @returns {WDK} The wdk instance.
    */
-  registerWallet (blockchain, WalletManager, config) {
-    const wallet = new WalletManager(this._seed, config)
+  registerWallet(blockchain, WalletManager, config) {
+    const wallet = new WalletManager(this._seed, config);
 
-    this._wallets.set(blockchain, wallet)
+    this._wallets.set(blockchain, wallet);
 
-    return this
+    return this;
   }
 
   /**
@@ -105,26 +110,26 @@ export default class WDK {
    * @param {ConstructorParameters<P>[1]} config - The protocol configuration.
    * @returns {WDK} The wdk instance.
    */
-  registerProtocol (blockchain, label, Protocol, config) {
+  registerProtocol(blockchain, label, Protocol, config) {
     if (Protocol.prototype instanceof SwapProtocol) {
-      this._protocols.swap[blockchain] ??= { }
+      this._protocols.swap[blockchain] ??= {};
 
-      this._protocols.swap[blockchain][label] = { Protocol, config }
+      this._protocols.swap[blockchain][label] = { Protocol, config };
     } else if (Protocol.prototype instanceof BridgeProtocol) {
-      this._protocols.bridge[blockchain] ??= { }
+      this._protocols.bridge[blockchain] ??= {};
 
-      this._protocols.bridge[blockchain][label] = { Protocol, config }
+      this._protocols.bridge[blockchain][label] = { Protocol, config };
     } else if (Protocol.prototype instanceof LendingProtocol) {
-      this._protocols.lending[blockchain] ??= { }
+      this._protocols.lending[blockchain] ??= {};
 
-      this._protocols.lending[blockchain][label] = { Protocol, config }
+      this._protocols.lending[blockchain][label] = { Protocol, config };
     } else if (Protocol.prototype instanceof FiatProtocol) {
-      this._protocols.fiat[blockchain] ??= { }
+      this._protocols.fiat[blockchain] ??= {};
 
-      this._protocols.fiat[blockchain][label] = { Protocol, config }
+      this._protocols.fiat[blockchain][label] = { Protocol, config };
     }
 
-    return this
+    return this;
   }
 
   /**
@@ -136,12 +141,12 @@ export default class WDK {
    * @param {MiddlewareFunction} middleware - A callback function that is called each time the user derives a new account.
    * @returns {WDK} The wdk instance.
    */
-  registerMiddleware (blockchain, middleware) {
-    this._middlewares[blockchain] ??= []
+  registerMiddleware(blockchain, middleware) {
+    this._middlewares[blockchain] ??= [];
 
-    this._middlewares[blockchain].push(middleware)
+    this._middlewares[blockchain].push(middleware);
 
-    return this
+    return this;
   }
 
   /**
@@ -152,20 +157,20 @@ export default class WDK {
    * @returns {Promise<IWalletAccountWithProtocols>} The account.
    * @throws {Error} If no wallet has been registered for the given blockchain.
    */
-  async getAccount (blockchain, index = 0) {
+  async getAccount(blockchain, index = 0) {
     if (!this._wallets.has(blockchain)) {
-      throw new Error(`No wallet registered for blockchain: ${blockchain}.`)
+      throw new Error(`No wallet registered for blockchain: ${blockchain}.`);
     }
 
-    const wallet = this._wallets.get(blockchain)
+    const wallet = this._wallets.get(blockchain);
 
-    const account = await wallet.getAccount(index)
+    const account = await wallet.getAccount(index);
 
-    await this._runMiddlewares(account, { blockchain })
+    await this._runMiddlewares(account, { blockchain });
 
-    this._registerProtocols(account, { blockchain })
+    this._registerProtocols(account, { blockchain });
 
-    return account
+    return account;
   }
 
   /**
@@ -176,20 +181,20 @@ export default class WDK {
    * @returns {Promise<IWalletAccountWithProtocols>} The account.
    * @throws {Error} If no wallet has been registered for the given blockchain.
    */
-  async getAccountByPath (blockchain, path) {
+  async getAccountByPath(blockchain, path) {
     if (!this._wallets.has(blockchain)) {
-      throw new Error(`No wallet registered for blockchain: ${blockchain}.`)
+      throw new Error(`No wallet registered for blockchain: ${blockchain}.`);
     }
 
-    const wallet = this._wallets.get(blockchain)
+    const wallet = this._wallets.get(blockchain);
 
-    const account = await wallet.getAccountByPath(path)
+    const account = await wallet.getAccountByPath(path);
 
-    await this._runMiddlewares(account, { blockchain })
+    await this._runMiddlewares(account, { blockchain });
 
-    this._registerProtocols(account, { blockchain })
+    this._registerProtocols(account, { blockchain });
 
-    return account
+    return account;
   }
 
   /**
@@ -199,118 +204,118 @@ export default class WDK {
    * @returns {Promise<FeeRates>} The fee rates (in base unit).
    * @throws {Error} If no wallet has been registered for the given blockchain.
    */
-  async getFeeRates (blockchain) {
+  async getFeeRates(blockchain) {
     if (!this._wallets.has(blockchain)) {
-      throw new Error(`No wallet registered for blockchain: ${blockchain}.`)
+      throw new Error(`No wallet registered for blockchain: ${blockchain}.`);
     }
 
-    const wallet = this._wallets.get(blockchain)
+    const wallet = this._wallets.get(blockchain);
 
-    const feeRates = await wallet.getFeeRates()
+    const feeRates = await wallet.getFeeRates();
 
-    return feeRates
+    return feeRates;
   }
 
   /**
    * Disposes and unregisters all the wallets, erasing any sensitive data from the memory.
    */
-  dispose () {
+  dispose() {
     for (const [, wallet] of this._wallets) {
-      wallet.dispose()
+      wallet.dispose();
     }
 
-    this._wallets.clear()
+    this._wallets.clear();
   }
 
   /** @private */
-  async _runMiddlewares (account, { blockchain }) {
+  async _runMiddlewares(account, { blockchain }) {
     if (this._middlewares[blockchain]) {
       for (const middleware of this._middlewares[blockchain]) {
-        await middleware(account)
+        await middleware(account);
       }
     }
   }
 
   /** @private */
-  _registerProtocols (account, { blockchain }) {
-    const protocols = { swap: { }, bridge: { }, lending: { }, fiat: { } }
+  _registerProtocols(account, { blockchain }) {
+    const protocols = { swap: {}, bridge: {}, lending: {}, fiat: {} };
 
     account.registerProtocol = (label, Protocol, config) => {
       if (Protocol.prototype instanceof SwapProtocol) {
-        protocols.swap[label] = new Protocol(account, config)
+        protocols.swap[label] = new Protocol(account, config);
       } else if (Protocol.prototype instanceof BridgeProtocol) {
-        protocols.bridge[label] = new Protocol(account, config)
+        protocols.bridge[label] = new Protocol(account, config);
       } else if (Protocol.prototype instanceof LendingProtocol) {
-        protocols.lending[label] = new Protocol(account, config)
+        protocols.lending[label] = new Protocol(account, config);
       } else if (Protocol.prototype instanceof FiatProtocol) {
-        protocols.fiat[label] = new Protocol(account, config)
+        protocols.fiat[label] = new Protocol(account, config);
       }
 
-      return account
-    }
+      return account;
+    };
 
     account.getSwapProtocol = (label) => {
       if (this._protocols.swap[blockchain]?.[label]) {
-        const { Protocol, config } = this._protocols.swap[blockchain][label]
+        const { Protocol, config } = this._protocols.swap[blockchain][label];
 
-        const protocol = new Protocol(account, config)
+        const protocol = new Protocol(account, config);
 
-        return protocol
+        return protocol;
       }
 
       if (protocols.swap[label]) {
-        return protocols.swap[label]
+        return protocols.swap[label];
       }
 
-      throw new Error(`No swap protocol registered for label: ${label}.`)
-    }
+      throw new Error(`No swap protocol registered for label: ${label}.`);
+    };
 
     account.getBridgeProtocol = (label) => {
       if (this._protocols.bridge[blockchain]?.[label]) {
-        const { Protocol, config } = this._protocols.bridge[blockchain][label]
+        const { Protocol, config } = this._protocols.bridge[blockchain][label];
 
-        const protocol = new Protocol(account, config)
+        const protocol = new Protocol(account, config);
 
-        return protocol
+        return protocol;
       }
 
       if (protocols.bridge[label]) {
-        return protocols.bridge[label]
+        return protocols.bridge[label];
       }
 
-      throw new Error(`No bridge protocol registered for label: ${label}.`)
-    }
+      throw new Error(`No bridge protocol registered for label: ${label}.`);
+    };
 
     account.getLendingProtocol = (label) => {
       if (this._protocols.lending[blockchain]?.[label]) {
-        const { Protocol, config } = this._protocols.lending[blockchain][label]
+        const { Protocol, config } = this._protocols.lending[blockchain][label];
 
-        const protocol = new Protocol(account, config)
+        const protocol = new Protocol(account, config);
 
-        return protocol
+        return protocol;
       }
 
       if (protocols.lending[label]) {
-        return protocols.lending[label]
+        return protocols.lending[label];
       }
 
-      throw new Error(`No lending protocol registered for label: ${label}.`)
-    }
+      throw new Error(`No lending protocol registered for label: ${label}.`);
+    };
 
     account.getFiatProtocol = (label) => {
       if (this._protocols.fiat[blockchain]?.[label]) {
-        const { Protocol, config } = this._protocols.fiat[blockchain][label]
+        const { Protocol, config } = this._protocols.fiat[blockchain][label];
 
-        const protocol = new Protocol(account, config)
+        const protocol = new Protocol(account, config);
 
-        return protocol
+        return protocol;
       }
 
       if (protocols.fiat[label]) {
-        return protocols.fiat[label]
+        return protocols.fiat[label];
       }
 
-      throw new Error(`No fiat protocol registered for label: ${label}.`)
-    }
+      throw new Error(`No fiat protocol registered for label: ${label}.`);
+    };
   }
 }
