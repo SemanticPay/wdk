@@ -12,16 +12,22 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-"use strict";
+'use strict'
 
-import WalletManager from "@tetherto/wdk-wallet";
+import WalletManager from '@tetherto/wdk-wallet'
 
 import {
   SwapProtocol,
   BridgeProtocol,
   LendingProtocol,
-  FiatProtocol,
-} from "@tetherto/wdk-wallet/protocols";
+  FiatProtocol
+} from '@tetherto/wdk-wallet/protocols'
+
+import { runPolicies } from './policies.js'
+import { MUTATING_METHODS } from './constants/mutatingMethods.js'
+
+const INSTANCE_POLICY_SYMBOL = Symbol('wdk_instance_policies')
+const INSTANCE_WRAPPED_SYMBOL = Symbol('wdk_instance_wrapped')
 
 /** @typedef {import('@tetherto/wdk-wallet').IWalletAccount} IWalletAccount */
 
@@ -31,6 +37,8 @@ import {
 
 /** @typedef {<A extends IWalletAccount>(account: A) => Promise<void>} MiddlewareFunction */
 
+/** @typedef {{name: string, target?: {wallet?: string, protocol?: {blockchain?: string, label?: string}}, method?: string|string[], evaluate(method: string, params: any, wallet: any): boolean|Promise<boolean> }} Policy */
+
 export default class WDK {
   /**
    * Creates a new wallet development kit instance.
@@ -38,22 +46,28 @@ export default class WDK {
    * @param {string | Uint8Array} seed - The wallet's BIP-39 seed phrase.
    * @throws {Error} If the seed is not valid.
    */
-  constructor(seed) {
+  constructor (seed) {
     if (!WDK.isValidSeed(seed)) {
-      throw new Error("Invalid seed.");
+      throw new Error('Invalid seed.')
     }
 
     /** @private */
-    this._seed = seed;
+    this._seed = seed
 
     /** @private */
-    this._wallets = new Map();
+    this._wallets = new Map()
 
     /** @private */
-    this._protocols = { swap: {}, bridge: {}, lending: {}, fiat: {} };
+    this._protocols = { swap: {}, bridge: {}, lending: {}, fiat: {} }
 
     /** @private */
-    this._middlewares = {};
+    this._middlewares = {}
+
+    /**
+     *  @private
+     *  @type {Array<Policy>}
+     */
+    this._policies = []
   }
 
   /**
@@ -61,8 +75,8 @@ export default class WDK {
    *
    * @returns {string} The seed phrase.
    */
-  static getRandomSeedPhrase() {
-    return WalletManager.getRandomSeedPhrase();
+  static getRandomSeedPhrase () {
+    return WalletManager.getRandomSeedPhrase()
   }
 
   /**
@@ -71,12 +85,116 @@ export default class WDK {
    * @param {string | Uint8Array} seed - The seed.
    * @returns {boolean} True if the seed is valid.
    */
-  static isValidSeed(seed) {
+  static isValidSeed (seed) {
     if (seed instanceof Uint8Array) {
-      return seed.length >= 16 && seed.length <= 64;
+      return seed.length >= 16 && seed.length <= 64
     }
 
-    return WalletManager.isValidSeedPhrase(seed);
+    return WalletManager.isValidSeedPhrase(seed)
+  }
+
+  /**
+   * Register one or more wallet policies.
+   *
+   * Policies gate all mutating wallet methods.
+   *
+   * @param {Array<Policy>} policies
+   * @returns {WDK}
+   */
+  registerPolicies (policies = []) {
+    if (!Array.isArray(policies)) {
+      throw new TypeError('registerPolicies expects an array')
+    }
+
+    for (const p of policies) {
+      if (!p.name || typeof p.evaluate !== 'function') {
+        throw new TypeError('Invalid policy object')
+      }
+      this._policies.push(p)
+    }
+
+    return this
+  }
+
+  /**
+   * Applies policies to a specific account or protocol instance.
+   * Policies are isolated per account.
+   *
+   * @param {Object} instance
+   * @param {Object} target - { wallet?, protocol?: { blockchain?, label? } }
+   * @private
+   */
+  _withPolicyGate (instance, _target) {
+    const target = { ..._target }
+    if (!instance[INSTANCE_POLICY_SYMBOL]) {
+      Object.defineProperty(instance, INSTANCE_POLICY_SYMBOL, {
+        value: new Map(),
+        enumerable: false,
+        writable: false
+      })
+    }
+
+    if (!instance[INSTANCE_WRAPPED_SYMBOL]) {
+      Object.defineProperty(instance, INSTANCE_WRAPPED_SYMBOL, {
+        value: new Set(),
+        enumerable: false,
+        writable: false
+      })
+    }
+
+    const methodPolicyMap = instance[INSTANCE_POLICY_SYMBOL]
+    const wrappedMethods = instance[INSTANCE_WRAPPED_SYMBOL]
+
+    for (const policy of this._policies) {
+      const policyTarget = policy.target || {}
+      // ----- Wallet check -----
+      if (policyTarget.wallet && policyTarget.wallet !== target.wallet) {
+        continue
+      }
+
+      // ----- Protocol check -----
+      if (policyTarget.protocol) {
+        const proto = policyTarget.protocol
+        const tProto = target.protocol || {}
+
+        if (proto.blockchain && proto.blockchain !== tProto.blockchain) {
+          continue
+        }
+        if (proto.label && proto.label !== tProto.label) continue
+      }
+
+      // ----- Method resolution -----
+      let methods = policy.method
+      if (!methods) methods = MUTATING_METHODS
+      if (typeof methods === 'string') methods = [methods]
+
+      for (const methodName of methods) {
+        if (typeof instance[methodName] !== 'function') {
+          continue
+        }
+
+        if (!methodPolicyMap.has(methodName)) {
+          methodPolicyMap.set(methodName, [])
+        }
+
+        const list = methodPolicyMap.get(methodName)
+        if (!list.includes(policy)) list.push(policy)
+
+        // Wrap once per instance per method
+        if (!wrappedMethods.has(methodName)) {
+          const originalFn = instance[methodName].bind(instance)
+          instance[methodName] = async (...args) => {
+            const params = args[0]
+            const policies = methodPolicyMap.get(methodName) || []
+            await runPolicies(policies, methodName, params, target)
+
+            return originalFn(...args)
+          }
+
+          wrappedMethods.add(methodName)
+        }
+      }
+    }
   }
 
   /**
@@ -88,12 +206,12 @@ export default class WDK {
    * @param {ConstructorParameters<W>[1]} config - The configuration object.
    * @returns {WDK} The wdk instance.
    */
-  registerWallet(blockchain, WalletManager, config) {
-    const wallet = new WalletManager(this._seed, config);
+  registerWallet (blockchain, WalletManager, config) {
+    const wallet = new WalletManager(this._seed, config)
 
-    this._wallets.set(blockchain, wallet);
+    this._wallets.set(blockchain, wallet)
 
-    return this;
+    return this
   }
 
   /**
@@ -110,26 +228,26 @@ export default class WDK {
    * @param {ConstructorParameters<P>[1]} config - The protocol configuration.
    * @returns {WDK} The wdk instance.
    */
-  registerProtocol(blockchain, label, Protocol, config) {
+  registerProtocol (blockchain, label, Protocol, config) {
     if (Protocol.prototype instanceof SwapProtocol) {
-      this._protocols.swap[blockchain] ??= {};
+      this._protocols.swap[blockchain] ??= {}
 
-      this._protocols.swap[blockchain][label] = { Protocol, config };
+      this._protocols.swap[blockchain][label] = { Protocol, config }
     } else if (Protocol.prototype instanceof BridgeProtocol) {
-      this._protocols.bridge[blockchain] ??= {};
+      this._protocols.bridge[blockchain] ??= {}
 
-      this._protocols.bridge[blockchain][label] = { Protocol, config };
+      this._protocols.bridge[blockchain][label] = { Protocol, config }
     } else if (Protocol.prototype instanceof LendingProtocol) {
-      this._protocols.lending[blockchain] ??= {};
+      this._protocols.lending[blockchain] ??= {}
 
-      this._protocols.lending[blockchain][label] = { Protocol, config };
+      this._protocols.lending[blockchain][label] = { Protocol, config }
     } else if (Protocol.prototype instanceof FiatProtocol) {
-      this._protocols.fiat[blockchain] ??= {};
+      this._protocols.fiat[blockchain] ??= {}
 
-      this._protocols.fiat[blockchain][label] = { Protocol, config };
+      this._protocols.fiat[blockchain][label] = { Protocol, config }
     }
 
-    return this;
+    return this
   }
 
   /**
@@ -141,12 +259,12 @@ export default class WDK {
    * @param {MiddlewareFunction} middleware - A callback function that is called each time the user derives a new account.
    * @returns {WDK} The wdk instance.
    */
-  registerMiddleware(blockchain, middleware) {
-    this._middlewares[blockchain] ??= [];
+  registerMiddleware (blockchain, middleware) {
+    this._middlewares[blockchain] ??= []
 
-    this._middlewares[blockchain].push(middleware);
+    this._middlewares[blockchain].push(middleware)
 
-    return this;
+    return this
   }
 
   /**
@@ -157,20 +275,22 @@ export default class WDK {
    * @returns {Promise<IWalletAccountWithProtocols>} The account.
    * @throws {Error} If no wallet has been registered for the given blockchain.
    */
-  async getAccount(blockchain, index = 0) {
+  async getAccount (blockchain, index = 0) {
     if (!this._wallets.has(blockchain)) {
-      throw new Error(`No wallet registered for blockchain: ${blockchain}.`);
+      throw new Error(`No wallet registered for blockchain: ${blockchain}.`)
     }
 
-    const wallet = this._wallets.get(blockchain);
+    const wallet = this._wallets.get(blockchain)
 
-    const account = await wallet.getAccount(index);
+    const account = await wallet.getAccount(index)
 
-    await this._runMiddlewares(account, { blockchain });
+    await this._runMiddlewares(account, { blockchain })
 
-    this._registerProtocols(account, { blockchain });
+    this._registerProtocols(account, { blockchain })
 
-    return account;
+    this._withPolicyGate(account, { wallet: blockchain })
+
+    return account
   }
 
   /**
@@ -181,20 +301,22 @@ export default class WDK {
    * @returns {Promise<IWalletAccountWithProtocols>} The account.
    * @throws {Error} If no wallet has been registered for the given blockchain.
    */
-  async getAccountByPath(blockchain, path) {
+  async getAccountByPath (blockchain, path) {
     if (!this._wallets.has(blockchain)) {
-      throw new Error(`No wallet registered for blockchain: ${blockchain}.`);
+      throw new Error(`No wallet registered for blockchain: ${blockchain}.`)
     }
 
-    const wallet = this._wallets.get(blockchain);
+    const wallet = this._wallets.get(blockchain)
 
-    const account = await wallet.getAccountByPath(path);
+    const account = await wallet.getAccountByPath(path)
 
-    await this._runMiddlewares(account, { blockchain });
+    await this._runMiddlewares(account, { blockchain })
 
-    this._registerProtocols(account, { blockchain });
+    this._registerProtocols(account, { blockchain })
 
-    return account;
+    this._withPolicyGate(account, { wallet: blockchain })
+
+    return account
   }
 
   /**
@@ -204,118 +326,126 @@ export default class WDK {
    * @returns {Promise<FeeRates>} The fee rates (in base unit).
    * @throws {Error} If no wallet has been registered for the given blockchain.
    */
-  async getFeeRates(blockchain) {
+  async getFeeRates (blockchain) {
     if (!this._wallets.has(blockchain)) {
-      throw new Error(`No wallet registered for blockchain: ${blockchain}.`);
+      throw new Error(`No wallet registered for blockchain: ${blockchain}.`)
     }
 
-    const wallet = this._wallets.get(blockchain);
+    const wallet = this._wallets.get(blockchain)
 
-    const feeRates = await wallet.getFeeRates();
+    const feeRates = await wallet.getFeeRates()
 
-    return feeRates;
+    return feeRates
   }
 
   /**
    * Disposes and unregisters all the wallets, erasing any sensitive data from the memory.
    */
-  dispose() {
+  dispose () {
     for (const [, wallet] of this._wallets) {
-      wallet.dispose();
+      wallet.dispose()
     }
 
-    this._wallets.clear();
+    this._wallets.clear()
   }
 
   /** @private */
-  async _runMiddlewares(account, { blockchain }) {
+  async _runMiddlewares (account, { blockchain }) {
     if (this._middlewares[blockchain]) {
       for (const middleware of this._middlewares[blockchain]) {
-        await middleware(account);
+        await middleware(account)
       }
     }
   }
 
   /** @private */
-  _registerProtocols(account, { blockchain }) {
-    const protocols = { swap: {}, bridge: {}, lending: {}, fiat: {} };
+  _registerProtocols (account, { blockchain }) {
+    const protocols = { swap: {}, bridge: {}, lending: {}, fiat: {} }
 
     account.registerProtocol = (label, Protocol, config) => {
       if (Protocol.prototype instanceof SwapProtocol) {
-        protocols.swap[label] = new Protocol(account, config);
+        protocols.swap[label] = new Protocol(account, config)
       } else if (Protocol.prototype instanceof BridgeProtocol) {
-        protocols.bridge[label] = new Protocol(account, config);
+        protocols.bridge[label] = new Protocol(account, config)
       } else if (Protocol.prototype instanceof LendingProtocol) {
-        protocols.lending[label] = new Protocol(account, config);
+        protocols.lending[label] = new Protocol(account, config)
       } else if (Protocol.prototype instanceof FiatProtocol) {
-        protocols.fiat[label] = new Protocol(account, config);
+        protocols.fiat[label] = new Protocol(account, config)
       }
 
-      return account;
-    };
+      return account
+    }
 
     account.getSwapProtocol = (label) => {
       if (this._protocols.swap[blockchain]?.[label]) {
-        const { Protocol, config } = this._protocols.swap[blockchain][label];
+        const { Protocol, config } = this._protocols.swap[blockchain][label]
 
-        const protocol = new Protocol(account, config);
-
-        return protocol;
+        const protocol = new Protocol(account, config)
+        this._withPolicyGate(protocol, { protocol: { blockchain, label } })
+        return protocol
       }
 
       if (protocols.swap[label]) {
-        return protocols.swap[label];
+        const protocol = protocols.swap[label]
+        this._withPolicyGate(protocol, { protocol: { blockchain, label } })
+        return protocol
       }
 
-      throw new Error(`No swap protocol registered for label: ${label}.`);
-    };
+      throw new Error(`No swap protocol registered for label: ${label}.`)
+    }
 
     account.getBridgeProtocol = (label) => {
       if (this._protocols.bridge[blockchain]?.[label]) {
-        const { Protocol, config } = this._protocols.bridge[blockchain][label];
+        const { Protocol, config } = this._protocols.bridge[blockchain][label]
 
-        const protocol = new Protocol(account, config);
-
-        return protocol;
+        const protocol = new Protocol(account, config)
+        this._withPolicyGate(protocol, { protocol: { blockchain, label } })
+        return protocol
       }
 
       if (protocols.bridge[label]) {
-        return protocols.bridge[label];
+        const protocol = protocols.bridge[label]
+        this._withPolicyGate(protocol, { protocol: { blockchain, label } })
+        return protocol
       }
 
-      throw new Error(`No bridge protocol registered for label: ${label}.`);
-    };
+      throw new Error(`No bridge protocol registered for label: ${label}.`)
+    }
 
     account.getLendingProtocol = (label) => {
       if (this._protocols.lending[blockchain]?.[label]) {
-        const { Protocol, config } = this._protocols.lending[blockchain][label];
+        const { Protocol, config } = this._protocols.lending[blockchain][label]
 
-        const protocol = new Protocol(account, config);
-
-        return protocol;
+        const protocol = new Protocol(account, config)
+        this._withPolicyGate(protocol, { protocol: { blockchain, label } })
+        return protocol
       }
 
       if (protocols.lending[label]) {
-        return protocols.lending[label];
+        const protocol = protocols.lending[label]
+        this._withPolicyGate(protocol, { protocol: { blockchain, label } })
+        return protocol
       }
 
-      throw new Error(`No lending protocol registered for label: ${label}.`);
-    };
+      throw new Error(`No lending protocol registered for label: ${label}.`)
+    }
 
     account.getFiatProtocol = (label) => {
       if (this._protocols.fiat[blockchain]?.[label]) {
-        const { Protocol, config } = this._protocols.fiat[blockchain][label];
+        const { Protocol, config } = this._protocols.fiat[blockchain][label]
 
-        const protocol = new Protocol(account, config);
-
-        return protocol;
+        const protocol = new Protocol(account, config)
+        this._withPolicyGate(protocol, { protocol: { blockchain, label } })
+        return protocol
       }
 
       if (protocols.fiat[label]) {
-        return protocols.fiat[label];
+        const protocol = protocols.fiat[label]
+        this._withPolicyGate(protocol, { protocol: { blockchain, label } })
+        return protocol
       }
 
-      throw new Error(`No fiat protocol registered for label: ${label}.`);
-    };
+      throw new Error(`No fiat protocol registered for label: ${label}.`)
+    }
   }
 }
