@@ -10,7 +10,7 @@ import {
   SwapProtocol,
 } from "@tetherto/wdk-wallet/protocols";
 
-import WdkManager from "../index.js";
+import WdkManager, { errors } from "../index.js";
 
 const SEED_PHRASE =
   "cook voyage document eight skate token alien guide drink uncle term abuse";
@@ -542,6 +542,281 @@ describe("WdkManager", () => {
       wdkManager.dispose();
 
       expect(disposeMock).toHaveBeenCalled();
+    });
+  });
+
+  describe("registerPolicies", () => {
+    const CONFIG = { transferMaxFee: 100 };
+
+    const createDummyAccount = () => ({
+      getAddress: async () => {
+        return "0xa460AEbce0d3A4BecAd8ccf9D6D4861296c503Bd";
+      },
+      sendTransaction: jest.fn(async (params) => ({ type: "send", params })),
+      transfer: jest.fn(async (params) => ({ type: "transfer", params })),
+      bridge: jest.fn(async (params) => ({ type: "bridge", params })),
+      stake: jest.fn(async (params) => ({ type: "stake", params })),
+      unstake: jest.fn(async (params) => ({ type: "unstake", params })),
+      sign: jest.fn(async (params) => ({ type: "sign", params })),
+      nonMutating: jest.fn(() => "readonly"),
+    });
+
+    beforeEach(() => {
+      getAccountMock.mockReset();
+      getAccountMock.mockImplementation(createDummyAccount);
+    });
+
+    // ---------------- 1. Global spending limit ----------------
+    test("global spending limit policy rejects oversized sendTransaction", async () => {
+      wdkManager.registerWallet("ethereum", WalletManagerMock, CONFIG);
+
+      wdkManager.registerPolicies([
+        {
+          name: "max-transfer-1eth",
+          evaluate({ method, params }) {
+            if (method !== "sendTransaction") return true;
+            return BigInt(params.value ?? 0) <= 10n ** 18n;
+          },
+        },
+      ]);
+
+      const account = await wdkManager.getAccount("ethereum", 0);
+
+      await expect(() =>
+        account.sendTransaction({ value: 2n * 10n ** 18n }),
+      ).rejects.toBeInstanceOf(errors.PolicyViolationError);
+
+      const ok = await account.sendTransaction({ value: 5n * 10n ** 17n });
+      expect(ok.type).toBe("send");
+    });
+
+    // ---------------- 2. Wallet-specific policy ----------------
+    test("wallet-specific policy only applies to matching wallet", async () => {
+      wdkManager.registerWallet("ethereum-test", WalletManagerMock, CONFIG);
+      wdkManager.registerWallet("ton", WalletManagerMock, CONFIG);
+
+      wdkManager.registerPolicies([
+        {
+          name: "ethereum-only-bridge",
+          target: { wallet: "ethereum-test" },
+          method: "bridge",
+          evaluate: () => false,
+        },
+      ]);
+
+      const ethAccount = await wdkManager.getAccount("ethereum-test", 0);
+      const tonAccount = await wdkManager.getAccount("ton", 0);
+
+      await expect(() => ethAccount.bridge({})).rejects.toBeInstanceOf(
+        errors.PolicyViolationError,
+      );
+
+      const ok = await tonAccount.bridge({});
+      expect(ok.type).toBe("bridge");
+    });
+
+    // ---------------- 3. Protocol-specific policy ----------------
+    describe("protocol-targeted policy", () => {
+      let SwapProtocolMock, BridgeProtocolMock, LendingProtocolMock;
+      const SWAP_CONFIG = { swapMaxFee: 100 };
+      const BRIDGE_CONFIG = { bridgeMaxFee: 100 };
+
+      beforeEach(() => {
+        SwapProtocolMock = jest.fn();
+        Object.setPrototypeOf(
+          SwapProtocolMock.prototype,
+          SwapProtocol.prototype,
+        );
+
+        BridgeProtocolMock = jest.fn();
+        Object.setPrototypeOf(
+          BridgeProtocolMock.prototype,
+          BridgeProtocol.prototype,
+        );
+
+        LendingProtocolMock = jest.fn();
+        Object.setPrototypeOf(
+          LendingProtocolMock.prototype,
+          LendingProtocol.prototype,
+        );
+      });
+
+      test("applies only to matching protocol target", async () => {
+        wdkManager.registerWallet("ethereum", WalletManagerMock, CONFIG);
+        wdkManager.registerProtocol(
+          "ethereum",
+          "mainnet",
+          SwapProtocolMock,
+          SWAP_CONFIG,
+        );
+
+        wdkManager.registerPolicies([
+          {
+            name: "swap-max-fee",
+            target: { protocol: { blockchain: "ethereum", label: "mainnet" } },
+            method: "swap",
+            evaluate: () => false, // For simplicity, just return false
+          },
+        ]);
+
+        const account = await wdkManager.getAccount("ethereum", 0);
+        const protocol = account.getSwapProtocol("mainnet");
+
+        await expect(() => protocol.swap({})).rejects.toBeInstanceOf(
+          errors.PolicyViolationError,
+        );
+      });
+    });
+
+    // ---------------- 4. Multiple methods ----------------
+    test("policy with multiple methods applies to all listed methods", async () => {
+      wdkManager.registerWallet("ethereum-local", WalletManagerMock, CONFIG);
+
+      wdkManager.registerPolicies([
+        {
+          name: "disable-critical-ops",
+          target: {
+            wallet: "ethereum-local",
+          },
+          method: ["bridge", "stake", "unstake"],
+          evaluate: () => false,
+        },
+      ]);
+
+      const account = await wdkManager.getAccount("ethereum-local", 0);
+
+      await expect(() => account.bridge({})).rejects.toBeInstanceOf(
+        errors.PolicyViolationError,
+      );
+      await expect(() => account.stake({})).rejects.toBeInstanceOf(
+        errors.PolicyViolationError,
+      );
+      await expect(() => account.unstake({})).rejects.toBeInstanceOf(
+        errors.PolicyViolationError,
+      );
+
+      const ok = await account.sign({});
+      expect(ok.type).toBe("sign");
+    });
+
+    // ---------------- 5. Async policy ----------------
+    test("async policy evaluates correctly", async () => {
+      wdkManager.registerWallet("ethereum", WalletManagerMock, CONFIG);
+
+      const hour = new Date().getUTCHours();
+      wdkManager.registerPolicies([
+        {
+          name: "business-hours",
+          async evaluate() {
+            return hour >= 0; // always pass
+          },
+        },
+      ]);
+
+      const account = await wdkManager.getAccount("ethereum", 0);
+
+      const result = await account.sign({});
+      expect(result.type).toBe("sign");
+    });
+
+    // ---------------- 6. Recipient whitelist ----------------
+    test("recipient whitelist blocks non-whitelisted addresses", async () => {
+      wdkManager.registerWallet("ethereum", WalletManagerMock, CONFIG);
+
+      const allowed = new Set(["0xabc...", "0xdef..."]);
+      wdkManager.registerPolicies([
+        {
+          name: "recipient-whitelist",
+          method: "sendTransaction",
+          evaluate({ method, params }) {
+            if (!params?.to) return true;
+            return allowed.has(params.to.toLowerCase());
+          },
+        },
+      ]);
+
+      const account = await wdkManager.getAccount("ethereum", 0);
+
+      await expect(() =>
+        account.sendTransaction({ to: "0x123..." }),
+      ).rejects.toBeInstanceOf(errors.PolicyViolationError);
+
+      const ok = await account.sendTransaction({ to: "0xabc..." });
+      expect(ok.type).toBe("send");
+    });
+
+    // ---------------- 7. Short-circuiting multiple policies ----------------
+    test("stops at first rejecting policy", async () => {
+      wdkManager.registerWallet("polygon", WalletManagerMock, CONFIG);
+
+      const calls = [];
+      wdkManager.registerPolicies([
+        {
+          name: "p1",
+          method: "sendTransaction",
+          evaluate: () => {
+            calls.push("p1");
+            return false;
+          },
+        },
+        {
+          name: "p2",
+          method: "sendTransaction",
+          evaluate: () => {
+            calls.push("p2");
+            return true;
+          },
+        },
+      ]);
+
+      const account = await wdkManager.getAccount("polygon", 0);
+
+      await expect(() => account.sendTransaction({})).rejects.toBeInstanceOf(
+        errors.PolicyViolationError,
+      );
+      expect(calls).toEqual(["p1"]);
+    });
+
+    // ---------------- 8. Global policy applies to all methods ----------------
+    test("global policy runs on all mutating methods if method not specified", async () => {
+      wdkManager.registerWallet("ethereum", WalletManagerMock, CONFIG);
+
+      const calls = [];
+      wdkManager.registerPolicies([
+        {
+          name: "global-policy",
+          evaluate: ({ method }) => {
+            calls.push(method);
+            return true;
+          },
+        },
+      ]);
+      // console.log(wdkManager._policies);
+
+      const account = await wdkManager.getAccount("ethereum", 0);
+
+      await account.transfer({});
+      await account.stake({});
+      await account.unstake({});
+
+      expect(calls).toEqual(["transfer", "stake", "unstake"]);
+    });
+
+    // ---------------- 9. Non-mutating methods ----------------
+    test("non-mutating methods are not wrapped", async () => {
+      wdkManager.registerWallet("ethereum", WalletManagerMock, CONFIG);
+
+      wdkManager.registerPolicies([
+        {
+          name: "block-all",
+          evaluate: () => false,
+        },
+      ]);
+
+      const account = await wdkManager.getAccount("ethereum", 0);
+
+      const result = account.nonMutating();
+      expect(result).toBe("readonly");
     });
   });
 });
