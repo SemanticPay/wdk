@@ -21,3 +21,4 @@
 /** @typedef {import('./src/wallet-account-with-protocols.js').IWalletAccountWithProtocols} IWalletAccountWithProtocols */
 
 export { default } from './src/wdk-manager.js'
+export * as errors from './src/errors'
