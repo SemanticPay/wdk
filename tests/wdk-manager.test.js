@@ -446,15 +446,33 @@ describe('WdkManager', () => {
       sendTransaction: jest.fn(async (params) => ({ type: "send", params })),
       transfer: jest.fn(async (params) => ({ type: "transfer", params })),
       bridge: jest.fn(async (params) => ({ type: "bridge", params })),
-      stake: jest.fn(async (params) => ({ type: "stake", params })),
-      unstake: jest.fn(async (params) => ({ type: "unstake", params })),
+      repay: jest.fn(async (params) => ({ type: "stake", params })),
+      borrow: jest.fn(async (params) => ({ type: "borrow", params })),
       sign: jest.fn(async (params) => ({ type: "sign", params })),
-      nonMutating: jest.fn(() => "readonly"),
     });
 
     beforeEach(() => {
       getAccountMock.mockReset();
       getAccountMock.mockImplementation(createDummyAccount);
+    });
+
+    test("global spending limit policy approves undersized sendTransaction", async () => {
+      wdkManager.registerWallet("ethereum", WalletManagerMock, CONFIG);
+
+      wdkManager.registerPolicies([
+        {
+          name: "max-transfer-1eth",
+          evaluate({ method, params }) {
+            if (method !== "sendTransaction") return true;
+            return BigInt(params.value ?? 0) <= 10n ** 18n;
+          },
+        },
+      ]);
+
+      const account = await wdkManager.getAccount("ethereum", 0);
+
+      const ok = await account.sendTransaction({ value: 5n * 10n ** 17n });
+      expect(ok.type).toBe("send");
     });
 
     test("global spending limit policy rejects oversized sendTransaction", async () => {
@@ -475,9 +493,6 @@ describe('WdkManager', () => {
       await expect(() =>
         account.sendTransaction({ value: 2n * 10n ** 18n }),
       ).rejects.toBeInstanceOf(PolicyViolationError);
-
-      const ok = await account.sendTransaction({ value: 5n * 10n ** 17n });
-      expect(ok.type).toBe("send");
     });
 
     test("wallet-specific policy only applies to matching wallet", async () => {
@@ -565,7 +580,7 @@ describe('WdkManager', () => {
           target: {
             blockchain: "ethereum-local",
           },
-          method: ["bridge", "stake", "unstake"],
+          method: ["bridge", "repay", "borrow"],
           evaluate: () => false,
         },
       ]);
@@ -575,10 +590,10 @@ describe('WdkManager', () => {
       await expect(() => account.bridge({})).rejects.toBeInstanceOf(
         PolicyViolationError,
       );
-      await expect(() => account.stake({})).rejects.toBeInstanceOf(
+      await expect(() => account.repay({})).rejects.toBeInstanceOf(
         PolicyViolationError,
       );
-      await expect(() => account.unstake({})).rejects.toBeInstanceOf(
+      await expect(() => account.borrow({})).rejects.toBeInstanceOf(
         PolicyViolationError,
       );
 
@@ -676,10 +691,10 @@ describe('WdkManager', () => {
       const account = await wdkManager.getAccount("ethereum", 0);
 
       await account.transfer({});
-      await account.stake({});
-      await account.unstake({});
+      await account.repay({});
+      await account.borrow({});
 
-      expect(calls).toEqual(["transfer", "stake", "unstake"]);
+      expect(calls).toEqual(["transfer", "repay", "borrow"]);
     });
   });
 });
