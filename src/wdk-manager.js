@@ -40,11 +40,15 @@ const INSTANCE_WRAPPED_SYMBOL = Symbol('wdk_instance_wrapped')
  */
 
 /**
+ * @typedef {(method: string, params: any, wallet: any) => boolean|Promise<boolean>} PolicyEvaluator
+ */
+
+/**
  * @typedef {Object} Policy
  * @property {string} name - The policy name.
  * @property {PolicyTarget} [target] - Scopes the policy to a specific wallet or protocol.
  * @property {string|string[]} [method] - The method(s) to gate. If omitted, all methods are gated.
- * @property {(method: string, params: any, wallet: any) => boolean|Promise<boolean>} evaluate - Evaluates whether the method call is allowed.
+ * @property {PolicyEvaluator} evaluate - Evaluates whether the method call is allowed.
  */
 
 export default class WDK {
@@ -133,7 +137,7 @@ export default class WDK {
    * @param {PolicyTarget} target
    * @private
    */
-  async runPolicies (policies, method, params, target) {
+  async _runPolicies (policies, method, params, target) {
     for (const policy of policies) {
       const result = await policy.evaluate({ method, params, target })
 
@@ -220,7 +224,7 @@ export default class WDK {
           instance[methodName] = async (...args) => {
             const params = args[0]
             const policies = methodPolicyMap.get(methodName) || []
-            await this.runPolicies(policies, methodName, params, target)
+            await this._runPolicies(policies, methodName, params, target)
 
             return originalFn(...args)
           }

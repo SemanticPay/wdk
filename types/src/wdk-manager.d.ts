@@ -50,7 +50,7 @@ export default class WdkManager {
      * @param {PolicyTarget} target
      * @private
      */
-    private runPolicies;
+    private _runPolicies;
     /**
      * Applies policies to a specific account or protocol instance.
      * Policies are isolated per account.
@@ -149,6 +149,7 @@ export type PolicyTarget = {
         label?: string;
     };
 };
+export type PolicyEvaluator = (method: string, params: any, wallet: any) => boolean | Promise<boolean>;
 export type Policy = {
     /**
      * - The policy name.
@@ -165,7 +166,7 @@ export type Policy = {
     /**
      * - Evaluates whether the method call is allowed.
      */
-    evaluate: (method: string, params: any, wallet: any) => boolean | Promise<boolean>;
+    evaluate: PolicyEvaluator;
 };
 import WalletManager from "@tetherto/wdk-wallet";
 import { SwapProtocol } from "@tetherto/wdk-wallet/protocols";
