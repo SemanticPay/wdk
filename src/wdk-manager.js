@@ -66,10 +66,10 @@ export default class WDK {
     this._wallets = new Map()
 
     /** @private */
-    this._protocols = { swap: {}, bridge: {}, lending: {}, fiat: {} }
+    this._protocols = { swap: { }, bridge: { }, lending: { }, fiat: { } }
 
     /** @private */
-    this._middlewares = {}
+    this._middlewares = { }
 
     /**
      *  @private
@@ -264,19 +264,19 @@ export default class WDK {
    */
   registerProtocol (blockchain, label, Protocol, config) {
     if (Protocol.prototype instanceof SwapProtocol) {
-      this._protocols.swap[blockchain] ??= {}
+      this._protocols.swap[blockchain] ??= { }
 
       this._protocols.swap[blockchain][label] = { Protocol, config }
     } else if (Protocol.prototype instanceof BridgeProtocol) {
-      this._protocols.bridge[blockchain] ??= {}
+      this._protocols.bridge[blockchain] ??= { }
 
       this._protocols.bridge[blockchain][label] = { Protocol, config }
     } else if (Protocol.prototype instanceof LendingProtocol) {
-      this._protocols.lending[blockchain] ??= {}
+      this._protocols.lending[blockchain] ??= { }
 
       this._protocols.lending[blockchain][label] = { Protocol, config }
     } else if (Protocol.prototype instanceof FiatProtocol) {
-      this._protocols.fiat[blockchain] ??= {}
+      this._protocols.fiat[blockchain] ??= { }
 
       this._protocols.fiat[blockchain][label] = { Protocol, config }
     }
@@ -394,7 +394,7 @@ export default class WDK {
 
   /** @private */
   _registerProtocols (account, { blockchain }) {
-    const protocols = { swap: {}, bridge: {}, lending: {}, fiat: {} }
+    const protocols = { swap: { }, bridge: { }, lending: { }, fiat: { } }
 
     account.registerProtocol = (label, Protocol, config) => {
       if (Protocol.prototype instanceof SwapProtocol) {

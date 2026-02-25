@@ -1,22 +1,4 @@
-/** @typedef {import('@tetherto/wdk-wallet').IWalletAccount} IWalletAccount */
-/** @typedef {import('@tetherto/wdk-wallet').FeeRates} FeeRates */
-/** @typedef {import('./wallet-account-with-protocols.js').IWalletAccountWithProtocols} IWalletAccountWithProtocols */
-/** @typedef {<A extends IWalletAccount>(account: A) => Promise<void>} MiddlewareFunction */
-/**
- * @typedef {Object} PolicyTarget
- * @property {string} [blockchain] - The account blockchain identifier this policy applies to.
- * @property {Object} [protocol] - The protocol this policy applies to.
- * @property {string} [protocol.blockchain] - The blockchain name of the protocol (e.g. "ethereum", "solana").
- * @property {string} [protocol.label] - A protocol label or identifier.
- */
-/**
- * @typedef {Object} Policy
- * @property {string} name - The policy name.
- * @property {PolicyTarget} [target] - Scopes the policy to a specific wallet or protocol.
- * @property {string|string[]} [method] - The method(s) to gate. If omitted, all methods are gated.
- * @property {(method: string, params: any, wallet: any) => boolean|Promise<boolean>} evaluate - Evaluates whether the method call is allowed.
- */
-export default class WDK {
+export default class WdkManager {
     /**
      * Returns a random BIP-39 seed phrase.
      *
@@ -31,7 +13,7 @@ export default class WDK {
      */
     static isValidSeed(seed: string | Uint8Array): boolean;
     /**
-     * Creates a new wallet development kit instance.
+     * Creates a new wallet development kit manager.
      *
      * @param {string | Uint8Array} seed - The wallet's BIP-39 seed phrase.
      * @throws {Error} If the seed is not valid.
@@ -81,17 +63,17 @@ export default class WDK {
      */
     private _withPolicyGate;
     /**
-     * Registers a new wallet to WDK.
+     * Registers a new wallet to the wdk manager.
      *
      * @template {typeof WalletManager} W
      * @param {string} blockchain - The name of the blockchain the wallet must be bound to. Can be any string (e.g., "ethereum").
      * @param {W} WalletManager - The wallet manager class.
      * @param {ConstructorParameters<W>[1]} config - The configuration object.
-     * @returns {WDK} The wdk instance.
+     * @returns {WdkManager} The wdk manager.
      */
-    registerWallet<W extends typeof import("@tetherto/wdk-wallet").default>(blockchain: string, WalletManager: W, config: ConstructorParameters<W>[1]): WDK;
+    registerWallet<W extends typeof WalletManager>(blockchain: string, WalletManager: W, config: ConstructorParameters<W>[1]): WdkManager;
     /**
-     * Registers a new protocol to WDK.
+     * Registers a new protocol to the wdk manager.
      *
      * The label must be unique in the scope of the blockchain and the type of protocol (i.e., there can't be two protocols of the
      * same type bound to the same blockchain with the same label).
@@ -102,19 +84,19 @@ export default class WDK {
      * @param {string} label - The label.
      * @param {P} Protocol - The protocol class.
      * @param {ConstructorParameters<P>[1]} config - The protocol configuration.
-     * @returns {WDK} The wdk instance.
+     * @returns {WdkManager} The wdk manager.
      */
     registerProtocol<P extends typeof SwapProtocol | typeof BridgeProtocol | typeof LendingProtocol | typeof FiatProtocol>(blockchain: string, label: string, Protocol: P, config: ConstructorParameters<P>[1]): WDK;
     /**
-     * Registers a new middleware to WDK.
+     * Registers a new middleware to the wdk manager.
      *
      * It's possible to register multiple middlewares for the same blockchain, which will be called sequentially.
      *
      * @param {string} blockchain - The name of the blockchain the middleware must be bound to. Can be any string (e.g., "ethereum").
      * @param {MiddlewareFunction} middleware - A callback function that is called each time the user derives a new account.
-     * @returns {WDK} The wdk instance.
+     * @returns {WdkManager} The wdk manager.
      */
-    registerMiddleware(blockchain: string, middleware: MiddlewareFunction): WDK;
+    registerMiddleware(blockchain: string, middleware: MiddlewareFunction): WdkManager;
     /**
      * Returns the wallet account for a specific blockchain and index (see BIP-44).
      *
@@ -185,7 +167,8 @@ export type Policy = {
      */
     evaluate: (method: string, params: any, wallet: any) => boolean | Promise<boolean>;
 };
-import { SwapProtocol } from '@tetherto/wdk-wallet/protocols';
-import { BridgeProtocol } from '@tetherto/wdk-wallet/protocols';
-import { LendingProtocol } from '@tetherto/wdk-wallet/protocols';
-import { FiatProtocol } from '@tetherto/wdk-wallet/protocols';
+import WalletManager from "@tetherto/wdk-wallet";
+import { SwapProtocol } from "@tetherto/wdk-wallet/protocols";
+import { BridgeProtocol } from "@tetherto/wdk-wallet/protocols";
+import { LendingProtocol } from "@tetherto/wdk-wallet/protocols";
+import { FiatProtocol } from "@tetherto/wdk-wallet/protocols";
