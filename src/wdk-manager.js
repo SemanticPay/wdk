@@ -38,7 +38,7 @@ const INSTANCE_WRAPPED_SYMBOL = Symbol('wdk_instance_wrapped')
 
 /**
  * @typedef {Object} PolicyTarget
- * @property {string} [wallet] - The wallet identifier this policy applies to.
+ * @property {string} [blockchain] - The account blockchain identifier this policy applies to.
  * @property {Object} [protocol] - The protocol this policy applies to.
  * @property {string} [protocol.blockchain] - The blockchain name of the protocol (e.g. "ethereum", "solana").
  * @property {string} [protocol.label] - A protocol label or identifier.
@@ -154,12 +154,11 @@ export default class WDK {
    *
    * @template {typeof SwapProtocol | typeof BridgeProtocol | typeof LendingProtocol | typeof FiatProtocol | IWalletAccountWithProtocols} P
    * @param {P} instance
-   * @param {PolicyTarget} _target
+   * @param {PolicyTarget} target
    * @returns {P}
    * @private
    */
-  _withPolicyGate (instance, _target) {
-    const target = { ..._target }
+  _withPolicyGate (instance, target) {
     if (!instance[INSTANCE_POLICY_SYMBOL]) {
       Object.defineProperty(instance, INSTANCE_POLICY_SYMBOL, {
         value: new Map(),
@@ -181,7 +180,7 @@ export default class WDK {
 
     for (const policy of this._policies) {
       const policyTarget = policy.target || {}
-      if (policyTarget.wallet && policyTarget.wallet !== target.wallet) {
+      if (policyTarget.blockchain && policyTarget.blockchain !== target.blockchain) {
         continue
       }
 
@@ -197,7 +196,7 @@ export default class WDK {
 
       let methods = policy.method
       if (!methods) {
-        methods = Set()
+        methods = new Set()
         let obj = instance
         while (obj && obj !== Object.prototype) {
           Object.getOwnPropertyNames(obj)
@@ -328,7 +327,7 @@ export default class WDK {
 
     this._registerProtocols(account, { blockchain })
 
-    this._withPolicyGate(account, { wallet: blockchain })
+    this._withPolicyGate(account, { blockchain })
 
     return account
   }
@@ -354,7 +353,7 @@ export default class WDK {
 
     this._registerProtocols(account, { blockchain })
 
-    this._withPolicyGate(account, { wallet: blockchain })
+    this._withPolicyGate(account, { blockchain })
 
     return account
   }

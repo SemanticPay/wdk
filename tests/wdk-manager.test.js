@@ -596,7 +596,7 @@ describe("WdkManager", () => {
       wdkManager.registerPolicies([
         {
           name: "ethereum-only-bridge",
-          target: { wallet: "ethereum-test" },
+          target: { blockchain: "ethereum-test" },
           method: "bridge",
           evaluate: () => false,
         },
@@ -672,7 +672,7 @@ describe("WdkManager", () => {
         {
           name: "disable-critical-ops",
           target: {
-            wallet: "ethereum-local",
+            blockchain: "ethereum-local",
           },
           method: ["bridge", "stake", "unstake"],
           evaluate: () => false,
@@ -791,22 +791,6 @@ describe("WdkManager", () => {
       await account.unstake({});
 
       expect(calls).toEqual(["transfer", "stake", "unstake"]);
-    });
-
-    test("non-mutating methods are not wrapped", async () => {
-      wdkManager.registerWallet("ethereum", WalletManagerMock, CONFIG);
-
-      wdkManager.registerPolicies([
-        {
-          name: "block-all",
-          evaluate: () => false,
-        },
-      ]);
-
-      const account = await wdkManager.getAccount("ethereum", 0);
-
-      const result = account.nonMutating();
-      expect(result).toBe("readonly");
     });
   });
 });

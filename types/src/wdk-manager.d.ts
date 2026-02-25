@@ -4,7 +4,7 @@
 /** @typedef {<A extends IWalletAccount>(account: A) => Promise<void>} MiddlewareFunction */
 /**
  * @typedef {Object} PolicyTarget
- * @property {string} [wallet] - The wallet identifier this policy applies to.
+ * @property {string} [blockchain] - The account blockchain identifier this policy applies to.
  * @property {Object} [protocol] - The protocol this policy applies to.
  * @property {string} [protocol.blockchain] - The blockchain name of the protocol (e.g. "ethereum", "solana").
  * @property {string} [protocol.label] - A protocol label or identifier.
@@ -75,7 +75,7 @@ export default class WDK {
      *
      * @template {typeof SwapProtocol | typeof BridgeProtocol | typeof LendingProtocol | typeof FiatProtocol | IWalletAccountWithProtocols} P
      * @param {P} instance
-     * @param {PolicyTarget} _target
+     * @param {PolicyTarget} target
      * @returns {P}
      * @private
      */
@@ -156,9 +156,9 @@ export type IWalletAccountWithProtocols = import("./wallet-account-with-protocol
 export type MiddlewareFunction = <A extends IWalletAccount>(account: A) => Promise<void>;
 export type PolicyTarget = {
     /**
-     * - The wallet identifier this policy applies to.
+     * - The account blockchain identifier this policy applies to.
      */
-    wallet?: string;
+    blockchain?: string;
     /**
      * - The protocol this policy applies to.
      */
