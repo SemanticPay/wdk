@@ -633,23 +633,19 @@ describe('WdkManager', () => {
     test("stops at first rejecting policy", async () => {
       wdkManager.registerWallet("polygon", WalletManagerMock, CONFIG);
 
-      const calls = [];
+      const p1Evaluate = jest.fn().mockReturnValue(false)
+      const p2Evaluate = jest.fn().mockReturnValue(true)
+
       wdkManager.registerPolicies([
         {
           name: "p1",
           method: "sendTransaction",
-          evaluate: () => {
-            calls.push("p1");
-            return false;
-          },
+          evaluate: p1Evaluate,
         },
         {
           name: "p2",
           method: "sendTransaction",
-          evaluate: () => {
-            calls.push("p2");
-            return true;
-          },
+          evaluate: p2Evaluate,
         },
       ]);
 
@@ -658,7 +654,9 @@ describe('WdkManager', () => {
       await expect(() => account.sendTransaction({})).rejects.toBeInstanceOf(
         PolicyViolationError,
       );
-      expect(calls).toEqual(["p1"]);
+
+      expect(p1Evaluate).toHaveBeenCalledTimes(1)
+      expect(p2Evaluate).not.toHaveBeenCalled()
     });
 
     test("global policy runs on all mutating methods if method not specified", async () => {
