@@ -38,9 +38,9 @@ export default class WdkManager {
      * Policies gate all mutating wallet methods.
      *
      * @param {Array<Policy>} policies
-     * @returns {WDK}
+     * @returns {WdkManager}
      */
-    registerPolicies(policies?: Array<Policy>): WDK;
+    registerPolicies(policies?: Array<Policy>): WdkManager;
     /**
      * Runs policies sequentially.
      *
