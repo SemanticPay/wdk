@@ -10,7 +10,7 @@ import {
   SwapProtocol,
 } from "@tetherto/wdk-wallet/protocols";
 
-import WdkManager, { errors } from "../index.js";
+import WdkManager, { PolicyViolationError } from "../index.js";
 
 const SEED_PHRASE =
   "cook voyage document eight skate token alien guide drink uncle term abuse";
@@ -583,7 +583,7 @@ describe("WdkManager", () => {
 
       await expect(() =>
         account.sendTransaction({ value: 2n * 10n ** 18n }),
-      ).rejects.toBeInstanceOf(errors.PolicyViolationError);
+      ).rejects.toBeInstanceOf(PolicyViolationError);
 
       const ok = await account.sendTransaction({ value: 5n * 10n ** 17n });
       expect(ok.type).toBe("send");
@@ -606,7 +606,7 @@ describe("WdkManager", () => {
       const tonAccount = await wdkManager.getAccount("ton", 0);
 
       await expect(() => ethAccount.bridge({})).rejects.toBeInstanceOf(
-        errors.PolicyViolationError,
+        PolicyViolationError,
       );
 
       const ok = await tonAccount.bridge({});
@@ -660,7 +660,7 @@ describe("WdkManager", () => {
         const protocol = account.getSwapProtocol("mainnet");
 
         await expect(() => protocol.swap({})).rejects.toBeInstanceOf(
-          errors.PolicyViolationError,
+          PolicyViolationError,
         );
       });
     });
@@ -682,13 +682,13 @@ describe("WdkManager", () => {
       const account = await wdkManager.getAccount("ethereum-local", 0);
 
       await expect(() => account.bridge({})).rejects.toBeInstanceOf(
-        errors.PolicyViolationError,
+        PolicyViolationError,
       );
       await expect(() => account.stake({})).rejects.toBeInstanceOf(
-        errors.PolicyViolationError,
+        PolicyViolationError,
       );
       await expect(() => account.unstake({})).rejects.toBeInstanceOf(
-        errors.PolicyViolationError,
+        PolicyViolationError,
       );
 
       const ok = await account.sign({});
@@ -733,7 +733,7 @@ describe("WdkManager", () => {
 
       await expect(() =>
         account.sendTransaction({ to: "0x123..." }),
-      ).rejects.toBeInstanceOf(errors.PolicyViolationError);
+      ).rejects.toBeInstanceOf(PolicyViolationError);
 
       const ok = await account.sendTransaction({ to: "0xabc..." });
       expect(ok.type).toBe("send");
@@ -765,7 +765,7 @@ describe("WdkManager", () => {
       const account = await wdkManager.getAccount("polygon", 0);
 
       await expect(() => account.sendTransaction({})).rejects.toBeInstanceOf(
-        errors.PolicyViolationError,
+        PolicyViolationError,
       );
       expect(calls).toEqual(["p1"]);
     });
