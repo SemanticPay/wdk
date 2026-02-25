@@ -151,8 +151,10 @@ export default class WDK {
    * Applies policies to a specific account or protocol instance.
    * Policies are isolated per account.
    *
-   * @param {Object} instance
-   * @param {Object} target - { wallet?, protocol?: { blockchain?, label? } }
+   * @template {typeof SwapProtocol | typeof BridgeProtocol | typeof LendingProtocol | typeof FiatProtocol | IWalletAccountWithProtocols} P
+   * @param {P} instance
+   * @param {PolicyTarget} _target
+   * @returns {P}
    * @private
    */
   _withPolicyGate (instance, _target) {
