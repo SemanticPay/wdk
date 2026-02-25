@@ -23,8 +23,6 @@ import {
   FiatProtocol
 } from '@tetherto/wdk-wallet/protocols'
 
-import { runPolicies } from './policies.js'
-
 const INSTANCE_POLICY_SYMBOL = Symbol('wdk_instance_policies')
 const INSTANCE_WRAPPED_SYMBOL = Symbol('wdk_instance_wrapped')
 
@@ -37,9 +35,17 @@ const INSTANCE_WRAPPED_SYMBOL = Symbol('wdk_instance_wrapped')
 /** @typedef {<A extends IWalletAccount>(account: A) => Promise<void>} MiddlewareFunction */
 
 /**
+ * @typedef {Object} PolicyTarget
+ * @property {string} [wallet] - The wallet identifier this policy applies to.
+ * @property {Object} [protocol] - The protocol this policy applies to.
+ * @property {string} [protocol.blockchain] - The blockchain name of the protocol (e.g. "ethereum", "solana").
+ * @property {string} [protocol.label] - A protocol label or identifier.
+ */
+
+/**
  * @typedef {Object} Policy
  * @property {string} name - The policy name.
- * @property {{wallet?: string, protocol?: {blockchain?: string, label?: string}}} [target] - Scopes the policy to a specific wallet or protocol.
+ * @property {PolicyTarget} [target] - Scopes the policy to a specific wallet or protocol.
  * @property {string|string[]} [method] - The method(s) to gate. If omitted, all methods are gated.
  * @property {(method: string, params: any, wallet: any) => boolean|Promise<boolean>} evaluate - Evaluates whether the method call is allowed.
  */
@@ -122,6 +128,26 @@ export default class WDK {
   }
 
   /**
+   * Runs policies sequentially.
+   *
+   * @param {Array<Policy>} policies
+   * @param {string} method
+   * @param {any} params
+   * @param {PolicyTarget} target
+   * @private
+   */
+  async runPolicies (policies, method, params, target) {
+    for (const policy of policies) {
+      const result = await policy.evaluate({ method, params, target })
+
+      if (!result) {
+        throw new PolicyViolationError(policy.name, method, target)
+      }
+    }
+  }
+
+
+  /**
    * Applies policies to a specific account or protocol instance.
    * Policies are isolated per account.
    *
@@ -197,7 +223,7 @@ export default class WDK {
           instance[methodName] = async (...args) => {
             const params = args[0]
             const policies = methodPolicyMap.get(methodName) || []
-            await runPolicies(policies, methodName, params, target)
+            await this.runPolicies(policies, methodName, params, target)
 
             return originalFn(...args)
           }
