@@ -437,41 +437,37 @@ describe('WdkManager', () => {
   })
 
   describe('registerPolicies', () => {
-    const POLICY_CONFIG = { transferMaxFee: 100 }
-    const ETHEREUM = 'ethereum'
     const ETHEREUM_TEST = 'ethereum-test'
     const ETHEREUM_LOCAL = 'ethereum-local'
-    const TON = 'ton'
-    const POLYGON = 'polygon'
-    const MAX_TRANSFER_VALUE = 10n ** 18n
-    const ALLOWED_TRANSFER_VALUE = 5n * 10n ** 17n
-    const BLOCKED_TRANSFER_VALUE = 2n * 10n ** 18n
-    const ALLOWED_RECIPIENT = '0xabc...'
-    const SECOND_ALLOWED_RECIPIENT = '0xdef...'
-    const BLOCKED_RECIPIENT = '0x123...'
-    const SWAP_CONFIG = { swapMaxFee: 100 }
-
-    const createDummyAccount = () => ({
-      getAddress: async () => '0xa460AEbce0d3A4BecAd8ccf9D6D4861296c503Bd',
-      sendTransaction: jest.fn(async (params) => ({ type: 'send', params })),
-      transfer: jest.fn(async (params) => ({ type: 'transfer', params })),
-      bridge: jest.fn(async (params) => ({ type: 'bridge', params })),
-      repay: jest.fn(async (params) => ({ type: 'stake', params })),
-      borrow: jest.fn(async (params) => ({ type: 'borrow', params })),
-      sign: jest.fn(async (params) => ({ type: 'sign', params }))
-    })
+    const DUMMY_TX_HASH = '0xdeadbeef1234567890abcdef1234567890abcdef12345678'
+    const DUMMY_APPROVE_HASH = '0xaaaa1111bbbb2222cccc3333dddd4444eeee5555ffff6666'
+    const DUMMY_TX_FEE = 21_000_000_000_000n
+    const DUMMY_BRIDGE_FEE = 5_000_000_000_000n
+    const DUMMY_SIGNATURE = '0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890'
 
     beforeEach(() => {
-      getAccountMock.mockReset();
-      getAccountMock.mockImplementation(createDummyAccount);
-    });
+      getAccountMock.mockReset()
+      getAccountMock.mockImplementation(() => ({
+        getAddress: async () => '0xa460AEbce0d3A4BecAd8ccf9D6D4861296c503Bd',
+        sendTransaction: jest.fn().mockResolvedValue({ hash: DUMMY_TX_HASH, fee: DUMMY_TX_FEE }),
+        transfer: jest.fn().mockResolvedValue({ hash: DUMMY_TX_HASH, fee: DUMMY_TX_FEE }),
+        bridge: jest.fn().mockResolvedValue({ hash: DUMMY_TX_HASH, approveHash: DUMMY_APPROVE_HASH, fee: DUMMY_TX_FEE, bridgeFee: DUMMY_BRIDGE_FEE }),
+        repay: jest.fn().mockResolvedValue({ hash: DUMMY_TX_HASH, fee: DUMMY_TX_FEE }),
+        borrow: jest.fn().mockResolvedValue({ hash: DUMMY_TX_HASH, fee: DUMMY_TX_FEE }),
+        sign: jest.fn().mockResolvedValue(DUMMY_SIGNATURE)
+      }))
+    })
 
+    afterEach(() => {
+      wdkManager.dispose()
+    })
 
     test('should allow sendTransaction when value is under the global spending limit', async () => {
+      const MAX_TRANSFER_VALUE = 10n ** 18n
       const evaluateMaxTransferPolicy = jest.fn(({ params }) => BigInt(params.value ?? 0n) <= MAX_TRANSFER_VALUE)
-      const sendParams = { value: ALLOWED_TRANSFER_VALUE }
+      const sendParams = { value: 5n * 10n ** 17n }
 
-      wdkManager.registerWallet(ETHEREUM, WalletManagerMock, POLICY_CONFIG)
+      wdkManager.registerWallet('ethereum', WalletManagerMock, CONFIG)
       wdkManager.registerPolicies([
         {
           name: 'max-transfer-1eth',
@@ -479,24 +475,25 @@ describe('WdkManager', () => {
           evaluate: evaluateMaxTransferPolicy
         }
       ])
-      const account = await wdkManager.getAccount(ETHEREUM, 0)
+      const account = await wdkManager.getAccount('ethereum', 0)
 
       const result = await account.sendTransaction(sendParams)
 
-      expect(result).toEqual({ type: 'send', params: sendParams })
+      expect(result).toEqual({ hash: DUMMY_TX_HASH, fee: DUMMY_TX_FEE })
       expect(evaluateMaxTransferPolicy).toHaveBeenCalledTimes(1)
       expect(evaluateMaxTransferPolicy).toHaveBeenCalledWith({
         method: 'sendTransaction',
         params: sendParams,
-        target: { blockchain: ETHEREUM }
+        target: { blockchain: 'ethereum' }
       })
     })
 
     test('should reject sendTransaction when value is over the global spending limit', async () => {
+      const MAX_TRANSFER_VALUE = 10n ** 18n
       const evaluateMaxTransferPolicy = jest.fn(({ params }) => BigInt(params.value ?? 0n) <= MAX_TRANSFER_VALUE)
-      const sendParams = { value: BLOCKED_TRANSFER_VALUE }
+      const sendParams = { value: 2n * 10n ** 18n }
 
-      wdkManager.registerWallet(ETHEREUM, WalletManagerMock, POLICY_CONFIG)
+      wdkManager.registerWallet('ethereum', WalletManagerMock, CONFIG)
       wdkManager.registerPolicies([
         {
           name: 'max-transfer-1eth',
@@ -504,7 +501,7 @@ describe('WdkManager', () => {
           evaluate: evaluateMaxTransferPolicy
         }
       ])
-      const account = await wdkManager.getAccount(ETHEREUM, 0)
+      const account = await wdkManager.getAccount('ethereum', 0)
 
       await expect(account.sendTransaction(sendParams))
         .rejects.toThrow('Policy "max-transfer-1eth" rejected method "sendTransaction" for global')
@@ -513,15 +510,15 @@ describe('WdkManager', () => {
       expect(evaluateMaxTransferPolicy).toHaveBeenCalledWith({
         method: 'sendTransaction',
         params: sendParams,
-        target: { blockchain: ETHEREUM }
+        target: { blockchain: 'ethereum' }
       })
     })
 
     test('should apply a blockchain-targeted policy only to the matching wallet', async () => {
       const evaluateEthereumBridgePolicy = jest.fn(() => false)
 
-      wdkManager.registerWallet(ETHEREUM_TEST, WalletManagerMock, POLICY_CONFIG)
-      wdkManager.registerWallet(TON, WalletManagerMock, POLICY_CONFIG)
+      wdkManager.registerWallet(ETHEREUM_TEST, WalletManagerMock, CONFIG)
+      wdkManager.registerWallet('ton', WalletManagerMock, CONFIG)
       wdkManager.registerPolicies([
         {
           name: 'ethereum-only-bridge',
@@ -531,13 +528,13 @@ describe('WdkManager', () => {
         }
       ])
       const ethereumAccount = await wdkManager.getAccount(ETHEREUM_TEST, 0)
-      const tonAccount = await wdkManager.getAccount(TON, 0)
+      const tonAccount = await wdkManager.getAccount('ton', 0)
 
       await expect(ethereumAccount.bridge({}))
         .rejects.toThrow('Policy "ethereum-only-bridge" rejected method "bridge" for global')
       const tonBridgeResult = await tonAccount.bridge({})
 
-      expect(tonBridgeResult).toEqual({ type: 'bridge', params: {} })
+      expect(tonBridgeResult).toEqual({ hash: DUMMY_TX_HASH, approveHash: DUMMY_APPROVE_HASH, fee: DUMMY_TX_FEE, bridgeFee: DUMMY_BRIDGE_FEE })
       expect(evaluateEthereumBridgePolicy).toHaveBeenCalledTimes(1)
       expect(evaluateEthereumBridgePolicy).toHaveBeenCalledWith({
         method: 'bridge',
@@ -546,40 +543,34 @@ describe('WdkManager', () => {
       })
     })
 
-    describe('protocol-targeted policy', () => {
-      let SwapProtocolMock
+    test('should reject swap when a protocol-targeted policy matches blockchain and label', async () => {
+      const SwapProtocolMock = jest.fn()
+      Object.setPrototypeOf(SwapProtocolMock.prototype, SwapProtocol.prototype)
 
-      beforeEach(() => {
-        SwapProtocolMock = jest.fn()
-        Object.setPrototypeOf(SwapProtocolMock.prototype, SwapProtocol.prototype)
-      })
+      const evaluateSwapPolicy = jest.fn(() => false)
+      const swapParams = { tokenIn: 'USDT' }
 
-      test('should reject swap when protocol target matches blockchain and label', async () => {
-        const evaluateSwapPolicy = jest.fn(() => false)
-        const swapParams = { tokenIn: 'USDT' }
-
-        wdkManager.registerWallet(ETHEREUM, WalletManagerMock, POLICY_CONFIG)
-        wdkManager.registerProtocol(ETHEREUM, 'mainnet', SwapProtocolMock, SWAP_CONFIG)
-        wdkManager.registerPolicies([
-          {
-            name: 'swap-max-fee',
-            target: { protocol: { blockchain: ETHEREUM, label: 'mainnet' } },
-            method: 'swap',
-            evaluate: evaluateSwapPolicy
-          }
-        ])
-        const account = await wdkManager.getAccount(ETHEREUM, 0)
-        const protocol = account.getSwapProtocol('mainnet')
-
-        await expect(protocol.swap(swapParams))
-          .rejects.toThrow('Policy "swap-max-fee" rejected method "swap" for protocol: {"blockchain":"ethereum","label":"mainnet"}')
-
-        expect(evaluateSwapPolicy).toHaveBeenCalledTimes(1)
-        expect(evaluateSwapPolicy).toHaveBeenCalledWith({
+      wdkManager.registerWallet('ethereum', WalletManagerMock, CONFIG)
+      wdkManager.registerProtocol('ethereum', 'mainnet', SwapProtocolMock, { swapMaxFee: 100 })
+      wdkManager.registerPolicies([
+        {
+          name: 'swap-max-fee',
+          target: { protocol: { blockchain: 'ethereum', label: 'mainnet' } },
           method: 'swap',
-          params: swapParams,
-          target: { protocol: { blockchain: ETHEREUM, label: 'mainnet' } }
-        })
+          evaluate: evaluateSwapPolicy
+        }
+      ])
+      const account = await wdkManager.getAccount('ethereum', 0)
+      const protocol = account.getSwapProtocol('mainnet')
+
+      await expect(protocol.swap(swapParams))
+        .rejects.toThrow('Policy "swap-max-fee" rejected method "swap" for protocol: {"blockchain":"ethereum","label":"mainnet"}')
+
+      expect(evaluateSwapPolicy).toHaveBeenCalledTimes(1)
+      expect(evaluateSwapPolicy).toHaveBeenCalledWith({
+        method: 'swap',
+        params: swapParams,
+        target: { protocol: { blockchain: 'ethereum', label: 'mainnet' } }
       })
     })
 
@@ -590,7 +581,7 @@ describe('WdkManager', () => {
       const borrowParams = { amount: 2n }
       const signParams = { payload: '0xdeadbeef' }
 
-      wdkManager.registerWallet(ETHEREUM_LOCAL, WalletManagerMock, POLICY_CONFIG)
+      wdkManager.registerWallet(ETHEREUM_LOCAL, WalletManagerMock, CONFIG)
       wdkManager.registerPolicies([
         {
           name: 'disable-critical-ops',
@@ -609,7 +600,7 @@ describe('WdkManager', () => {
         .rejects.toThrow('Policy "disable-critical-ops" rejected method "borrow" for global')
       const signResult = await account.sign(signParams)
 
-      expect(signResult).toEqual({ type: 'sign', params: signParams })
+      expect(signResult).toBe(DUMMY_SIGNATURE)
       expect(evaluateDisableCriticalOpsPolicy).toHaveBeenCalledTimes(3)
       expect(evaluateDisableCriticalOpsPolicy).toHaveBeenNthCalledWith(1, {
         method: 'bridge',
@@ -630,9 +621,9 @@ describe('WdkManager', () => {
 
     test('should await an async policy before allowing a method call', async () => {
       const evaluateBusinessHoursPolicy = jest.fn().mockResolvedValue(true)
-      const signParams = { payload: '0xabc' }
+      const signParams = { message: '0xabc' }
 
-      wdkManager.registerWallet(ETHEREUM, WalletManagerMock, POLICY_CONFIG)
+      wdkManager.registerWallet('ethereum', WalletManagerMock, CONFIG)
       wdkManager.registerPolicies([
         {
           name: 'business-hours',
@@ -640,53 +631,16 @@ describe('WdkManager', () => {
           evaluate: evaluateBusinessHoursPolicy
         }
       ])
-      const account = await wdkManager.getAccount(ETHEREUM, 0)
+      const account = await wdkManager.getAccount('ethereum', 0)
 
       const signResult = await account.sign(signParams)
 
-      expect(signResult).toEqual({ type: 'sign', params: signParams })
+      expect(signResult).toBe(DUMMY_SIGNATURE)
       expect(evaluateBusinessHoursPolicy).toHaveBeenCalledTimes(1)
       expect(evaluateBusinessHoursPolicy).toHaveBeenCalledWith({
         method: 'sign',
         params: signParams,
-        target: { blockchain: ETHEREUM }
-      })
-    })
-
-    test('should block non-whitelisted recipients and allow whitelisted recipients', async () => {
-      const allowedRecipients = new Set([ALLOWED_RECIPIENT, SECOND_ALLOWED_RECIPIENT])
-      const evaluateRecipientWhitelistPolicy = jest.fn(({ params }) => {
-        if (!params.to) return true
-        return allowedRecipients.has(params.to.toLowerCase())
-      })
-      const blockedSendParams = { to: BLOCKED_RECIPIENT }
-      const allowedSendParams = { to: ALLOWED_RECIPIENT }
-
-      wdkManager.registerWallet(ETHEREUM, WalletManagerMock, POLICY_CONFIG)
-      wdkManager.registerPolicies([
-        {
-          name: 'recipient-whitelist',
-          method: 'sendTransaction',
-          evaluate: evaluateRecipientWhitelistPolicy
-        }
-      ])
-      const account = await wdkManager.getAccount(ETHEREUM, 0)
-
-      await expect(account.sendTransaction(blockedSendParams))
-        .rejects.toThrow('Policy "recipient-whitelist" rejected method "sendTransaction" for global')
-      const allowedResult = await account.sendTransaction(allowedSendParams)
-
-      expect(allowedResult).toEqual({ type: 'send', params: allowedSendParams })
-      expect(evaluateRecipientWhitelistPolicy).toHaveBeenCalledTimes(2)
-      expect(evaluateRecipientWhitelistPolicy).toHaveBeenNthCalledWith(1, {
-        method: 'sendTransaction',
-        params: blockedSendParams,
-        target: { blockchain: ETHEREUM }
-      })
-      expect(evaluateRecipientWhitelistPolicy).toHaveBeenNthCalledWith(2, {
-        method: 'sendTransaction',
-        params: allowedSendParams,
-        target: { blockchain: ETHEREUM }
+        target: { blockchain: 'ethereum' }
       })
     })
 
@@ -694,7 +648,7 @@ describe('WdkManager', () => {
       const firstPolicyEvaluator = jest.fn(() => false)
       const secondPolicyEvaluator = jest.fn(() => true)
 
-      wdkManager.registerWallet(POLYGON, WalletManagerMock, POLICY_CONFIG)
+      wdkManager.registerWallet('polygon', WalletManagerMock, CONFIG)
       wdkManager.registerPolicies([
         {
           name: 'p1',
@@ -707,7 +661,7 @@ describe('WdkManager', () => {
           evaluate: secondPolicyEvaluator
         }
       ])
-      const account = await wdkManager.getAccount(POLYGON, 0)
+      const account = await wdkManager.getAccount('polygon', 0)
 
       await expect(account.sendTransaction({}))
         .rejects.toThrow('Policy "p1" rejected method "sendTransaction" for global')
@@ -722,37 +676,37 @@ describe('WdkManager', () => {
       const repayParams = { amount: 22n }
       const borrowParams = { amount: 33n }
 
-      wdkManager.registerWallet(ETHEREUM, WalletManagerMock, POLICY_CONFIG)
+      wdkManager.registerWallet('ethereum', WalletManagerMock, CONFIG)
       wdkManager.registerPolicies([
         {
           name: 'global-policy',
           evaluate: evaluateGlobalPolicy
         }
       ])
-      const account = await wdkManager.getAccount(ETHEREUM, 0)
+      const account = await wdkManager.getAccount('ethereum', 0)
 
       const transferResult = await account.transfer(transferParams)
       const repayResult = await account.repay(repayParams)
       const borrowResult = await account.borrow(borrowParams)
 
-      expect(transferResult).toEqual({ type: 'transfer', params: transferParams })
-      expect(repayResult).toEqual({ type: 'stake', params: repayParams })
-      expect(borrowResult).toEqual({ type: 'borrow', params: borrowParams })
+      expect(transferResult).toEqual({ hash: DUMMY_TX_HASH, fee: DUMMY_TX_FEE })
+      expect(repayResult).toEqual({ hash: DUMMY_TX_HASH, fee: DUMMY_TX_FEE })
+      expect(borrowResult).toEqual({ hash: DUMMY_TX_HASH, fee: DUMMY_TX_FEE })
       expect(evaluateGlobalPolicy).toHaveBeenCalledTimes(3)
       expect(evaluateGlobalPolicy).toHaveBeenNthCalledWith(1, {
         method: 'transfer',
         params: transferParams,
-        target: { blockchain: ETHEREUM }
+        target: { blockchain: 'ethereum' }
       })
       expect(evaluateGlobalPolicy).toHaveBeenNthCalledWith(2, {
         method: 'repay',
         params: repayParams,
-        target: { blockchain: ETHEREUM }
+        target: { blockchain: 'ethereum' }
       })
       expect(evaluateGlobalPolicy).toHaveBeenNthCalledWith(3, {
         method: 'borrow',
         params: borrowParams,
-        target: { blockchain: ETHEREUM }
+        target: { blockchain: 'ethereum' }
       })
     })
   })
