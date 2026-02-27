@@ -187,7 +187,7 @@ wdk.registerPolicies([
   {
     name: 'disable-critical-ops',
     target: { blockchain: 'ethereum' },
-    method: ['bridge', 'stake', 'unstake'],
+    method: ['bridge', 'borrow', 'repay'],
     evaluate: () => false
   }
 ])
